@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+import os
+import sys
+import time
+import logging
+import signal
+import multiprocessing
+from functools import partial 
+from types import FrameType, Optional
+from multiprocessing import freeze_support
+from patroni.config import Config
+from patroni.bootstrap import Bootstrap
+from patroni.postgresql import Postgresql
+
+
+logger = logging.getLogger(__name__)
+
+
+# Looks like we are in a docker, so we will act like init
+def sigchld_handler(pid: int, signo: int, stack_frame: Optional[FrameType]) -> None:
+    try:
+        while True:
+            ret = os.waitpid(-1, os.WNOHANG)
+            if ret == (0, 0):
+                break
+            elif ret[0] != pid:
+                logger.info('Reaped pid=%s, exit status=%s', *ret)
+    except OSError:
+        pass
+
+
+def passtochild(pid: int, signo: int, stack_frame: Optional[FrameType]):
+    if pid:
+        os.kill(pid, signo)
+
+
+def init_postgresql(config):
+    created = False
+    postgresql = Postgresql(config['postgresql'])
+    if len(os.listdir(postgresql.data_dir)) == 0:
+        created = True
+        postgresql.initdb()
+    postgresql.config.write_postgresql_conf()
+    postgresql.config.replace_pg_hba()
+    postgresql.config.replace_pg_ident()
+    return created, postgresql
+
+
+def init_signal(pid):
+    signal.signal(signal.SIGCHLD, partial(sigchld_handler, pid))
+    signal.signal(signal.SIGHUP, partial(passtochild, pid))
+    signal.signal(signal.SIGQUIT, partial(passtochild, pid))
+    signal.signal(signal.SIGUSR1, partial(passtochild, pid))
+    signal.signal(signal.SIGUSR2, partial(passtochild, pid))
+    signal.signal(signal.SIGINT, partial(passtochild, pid))
+    signal.signal(signal.SIGABRT, partial(passtochild, pid))
+    signal.signal(signal.SIGTERM, partial(passtochild, pid))
+
+
+def main():
+    configfile = sys.argv[1]
+    config = Config(configfile)
+    created, postgresql = init_postgresql(config)
+    freeze_support()
+    process = multiprocessing.Process(target=postgresql.pg_ctl, args=("start",))
+    process.start()
+    for _ in range(30):
+        if created and postgresql.is_running():
+            bootstrap = Bootstrap(postgresql)
+            bootstrap.bootstrap(config)
+            break
+        time.sleep(5)
+    init_signal(process.pid)
+    process.join()
+
+
+if __name__ == "__main__":
+    main()

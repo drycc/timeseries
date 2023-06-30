@@ -1,0 +1,13 @@
+{{- if eq .Values.global.timeseriesLocation "on-cluster" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: drycc-timeseries
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: drycc-timeseries
+subjects:
+- kind: ServiceAccount
+  name: drycc-timeseries
+{{- end }}
