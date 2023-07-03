@@ -12,12 +12,12 @@ spec:
   serviceName: drycc-timeseries
   selector:
     matchLabels:
-      app: drycc-timeseries
+      app: drycc-timeseries-main
       cluster-name: drycc-timeseries
   template:
     metadata:
       labels:
-        app: drycc-timeseries
+        app: drycc-timeseries-main
         cluster-name: drycc-timeseries
     spec:
       affinity:
@@ -70,12 +70,12 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         volumeMounts:
-        - name: timeseries-data
+        - name: timeseries-main-data
           mountPath: /data
   {{- if .Values.persistence.enabled }}
   volumeClaimTemplates:
   - metadata:
-      name: timeseries-data
+      name: timeseries-main-data
     spec:
       accessModes: [ "ReadWriteOnce" ]
       {{- if .Values.persistence.storageClass }}
@@ -90,7 +90,7 @@ spec:
           storage: {{ .Values.persistence.size | quote }}
   {{- else }}
       volumes:
-      - name: timeseries-data
+      - name: timeseries-main-data
         emptyDir: {}
   {{- end }}
 {{- end }}

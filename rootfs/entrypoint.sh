@@ -14,6 +14,9 @@ bootstrap:
   dcs:
     postgresql:
       use_pg_rewind: true
+      parameters:
+        max_connections: ${PG_MAX_CONNECTIONS}
+        max_prepared_transactions: ${PG_MAX_CONNECTIONS}
   initdb:
   - auth-host: md5
   - auth-local: trust
@@ -42,20 +45,18 @@ postgresql:
 watchdog:
   mode: off
 __EOF__
-
   unset DRYCC_TIMESERIES_SUPERUSER_PASSWORD DRYCC_TIMESERIES_REPLICATION_PASSWORD
 }
 
 function start_main() {
   init_passwd
   init_config
-  start-main /data/patroni.yaml
+  exec start-main /data/patroni.yaml
 }
 
 function start_node() {
   init_passwd
   init_config
-  start-node /data/patroni.yaml
+  exec start-node /data/patroni.yaml
 }
-
 "start_$1"

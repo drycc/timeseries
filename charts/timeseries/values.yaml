@@ -7,8 +7,9 @@ imageRegistry: "registry.drycc.cc"
 # limitsHugepages2Mi: 100Mi
 # limitsHugepages1Gi: 2Gi
 
-mainReplicas: 3
+mainReplicas: 2
 nodeReplicas: 3
+maxConnections: 2000
 
 nodeAffinityPreset:
   key: "drycc.cc/node"
@@ -60,12 +61,6 @@ password: ""
 initDatabases: "monitor"
 
 global:
-  # Set the location of Workflow's Object Storage
-  #
-  # Valid values are:
-  # - on-cluster: Run drycc storage within the Kubernetes cluster
-  # - off-cluster: Run Storage outside the Kubernetes cluster (Compatible with s3 API)
-  storageLocation: "on-cluster"
   # Set the location of Workflow's timeseries database
   #
   # Valid values are:

@@ -8,6 +8,8 @@ env:
 {{- end }}
 - name: PGCTLTIMEOUT
   value: "{{.Values.timeout}}"
+- name: PG_MAX_CONNECTIONS
+  value: "{{.Values.maxConnections}}"
 - name: PATRONI_KUBERNETES_POD_IP
   valueFrom:
     fieldRef:
@@ -21,7 +23,7 @@ env:
 - name: PATRONI_KUBERNETES_USE_ENDPOINTS
   value: 'true'
 - name: PATRONI_KUBERNETES_LABELS
-  value: '{app: drycc-timeseries, cluster-name: drycc-timeseries}'
+  value: '{app: drycc-timeseries-main, cluster-name: drycc-timeseries}'
 - name: PATRONI_SCOPE
   value: drycc-timeseries
 - name: PATRONI_NAME

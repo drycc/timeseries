@@ -10,7 +10,8 @@ if [[ ( -n "$DRYCC_TIMESERIES_USER") &&  ( -n "$DRYCC_TIMESERIES_PASSWORD")]]; t
     psql "$1" -w -c "CREATE DATABASE ${dbname} OWNER ${DRYCC_TIMESERIES_USER}"
     psql "$1" -w << EOF
 \c ${dbname};
-create extension ${extension};
+CREATE EXTENSION timescaledb;
+GRANT USAGE ON FOREIGN DATA WRAPPER timescaledb_fdw TO ${DRYCC_TIMESERIES_USER};
 EOF
   done
 else

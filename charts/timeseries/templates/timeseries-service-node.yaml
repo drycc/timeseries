@@ -1,0 +1,21 @@
+{{- if eq .Values.global.timeseriesLocation "on-cluster" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: drycc-timeseries-node
+  annotations:
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    heritage: drycc
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: drycc-timeseries-node
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}

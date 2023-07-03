@@ -4,11 +4,20 @@ FROM registry.drycc.cc/drycc/base:${CODENAME}
 COPY rootfs/usr /usr/
 COPY rootfs/entrypoint.sh /entrypoint.sh
 ENV PG_MAJOR=15 \
-  PG_MINOR=3
+  PG_MINOR=3 \
+  PYTHON_VERSION="3.11"
 
+ENV HOME /data
 ENV PGDATA /data/${PG_MAJOR}
 
-RUN install-stack postgresql $PG_MAJOR.$PG_MINOR \
+RUN install-packages gcc \
+  && install-stack python $PYTHON_VERSION \
+  && install-stack postgresql $PG_MAJOR.$PG_MINOR \
+  && . init-stack \
+  && set -eux; pip3 install --disable-pip-version-check --no-cache-dir psycopg[binary] patroni[kubernetes] 2>/dev/null; set +eux \
+  && apt-get purge -y --auto-remove gcc \
+  && apt-get autoremove -y \
+  && apt-get clean -y \
   && rm -rf \
     /usr/share/doc \
     /usr/share/man \
@@ -29,4 +38,4 @@ RUN install-stack postgresql $PG_MAJOR.$PG_MINOR \
 
 USER postgres
 ENTRYPOINT ["init-stack", "/entrypoint.sh"]
-EXPOSE 5432 8008
+EXPOSE 5432

@@ -1,23 +1,29 @@
 #!/usr/bin/env python
 import os
 import sys
-import time
 import logging
 import signal
-import multiprocessing
+import psutil
+import psycopg
+from contextlib import closing
 from functools import partial 
-from types import FrameType, Optional
-from multiprocessing import freeze_support
+from types import FrameType
+from typing import Optional
 from patroni.config import Config
-from patroni.bootstrap import Bootstrap
-from patroni.postgresql import Postgresql
+from patroni.__main__ import Patroni
+from patroni.async_executor import CriticalTask
 
 
 logger = logging.getLogger(__name__)
+add_node_sql_tpl = "SELECT add_data_node('%s', '%s', '%s', '%s', TRUE, TRUE, '%s');"
+create_user_mapping_tpl = """
+CREATE USER MAPPING IF NOT EXISTS FOR %s SERVER "%s" OPTIONS (user '%s', password '%s');
+"""
 
 
 # Looks like we are in a docker, so we will act like init
 def sigchld_handler(pid: int, signo: int, stack_frame: Optional[FrameType]) -> None:
+    print("sigchld_handler:%s,%s" % (signo, stack_frame))
     try:
         while True:
             ret = os.waitpid(-1, os.WNOHANG)
@@ -30,20 +36,44 @@ def sigchld_handler(pid: int, signo: int, stack_frame: Optional[FrameType]) -> N
 
 
 def passtochild(pid: int, signo: int, stack_frame: Optional[FrameType]):
+    print("passtochild:%s,%s" % (signo, stack_frame))
     if pid:
         os.kill(pid, signo)
 
 
-def init_postgresql(config):
-    created = False
-    postgresql = Postgresql(config['postgresql'])
-    if len(os.listdir(postgresql.data_dir)) == 0:
-        created = True
-        postgresql.initdb()
-    postgresql.config.write_postgresql_conf()
-    postgresql.config.replace_pg_hba()
-    postgresql.config.replace_pg_ident()
-    return created, postgresql
+def start_postgresql(config):
+    patroni = Patroni(config)
+    if os.path.exists(patroni.postgresql.data_dir):
+        patroni.postgresql.pg_ctl("-w", "start")
+        return False, patroni.postgresql.is_running().pid
+    else:
+        is_running = patroni.postgresql.bootstrap.bootstrap(config['bootstrap'])
+        if not is_running:
+            return
+        patroni.postgresql.bootstrap.post_bootstrap(config['bootstrap'], CriticalTask())
+        return True, patroni.postgresql.is_running().pid
+
+
+def register_node(config):
+    def exec_sql(conninfo, sql):
+        with closing(psycopg.connect(conninfo)) as conn:
+            conn.autocommit = True
+            conn.execute(sql)
+    print("Registering timescaledb node")
+    name = os.environ.get("HOSTNAME")
+    host = os.environ.get("DRYCC_TIMESERIES_SERVICE_HOST")
+    port = os.environ.get("DRYCC_TIMESERIES_SERVICE_PORT")
+    user = os.environ.get("DRYCC_TIMESERIES_USER")
+    password = os.environ.get("DRYCC_TIMESERIES_PASSWORD")
+    node, node_port = config["postgresql"]["connect_address"].split(":")
+    for dbname in os.environ.get('DRYCC_TIMESERIES_INIT_NAMES').split(','):
+        add_node_sql = add_node_sql_tpl % (name, node, dbname, node_port, password)
+        create_user_mapping_sql = create_user_mapping_tpl % (user, name, user, password)
+        conninfo = f"postgres://{user}:{password}@{host}:{port}/{dbname}"
+        exec_sql(conninfo, add_node_sql)
+        exec_sql(conninfo, create_user_mapping_sql)
+        print(f"Complete the registration of database {dbname}")
+    print("Registration timescaledb node completed")
 
 
 def init_signal(pid):
@@ -60,18 +90,12 @@ def init_signal(pid):
 def main():
     configfile = sys.argv[1]
     config = Config(configfile)
-    created, postgresql = init_postgresql(config)
-    freeze_support()
-    process = multiprocessing.Process(target=postgresql.pg_ctl, args=("start",))
-    process.start()
-    for _ in range(30):
-        if created and postgresql.is_running():
-            bootstrap = Bootstrap(postgresql)
-            bootstrap.bootstrap(config)
-            break
-        time.sleep(5)
-    init_signal(process.pid)
-    process.join()
+    init, pid = start_postgresql(config)
+    if not init:
+        register_node(config)
+    init_signal(pid)
+    process = psutil.Process(pid)
+    process.wait()
 
 
 if __name__ == "__main__":
