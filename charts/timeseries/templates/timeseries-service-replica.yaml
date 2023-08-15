@@ -9,7 +9,7 @@ metadata:
     {{- end }}
   labels:
     heritage: drycc
-    app: drycc-timeseries
+    app: drycc-timeseries-main
     role: replica
 spec:
   type: ClusterIP
@@ -18,6 +18,6 @@ spec:
       port: 5432
       targetPort: 5432
   selector:
-    app: drycc-timeseries
+    app: drycc-timeseries-main
     role: replica
 {{- end }}
