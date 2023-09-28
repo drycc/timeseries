@@ -21,7 +21,7 @@ CREATE USER MAPPING IF NOT EXISTS FOR %s SERVER "%s" OPTIONS (user '%s', passwor
 """
 
 
-# Looks like we are in a docker, so we will act like init
+# Looks like we are in a container, so we will act like init
 def sigchld_handler(pid: int, signo: int, stack_frame: Optional[FrameType]) -> None:
     print("sigchld_handler:%s,%s" % (signo, stack_frame))
     try:
