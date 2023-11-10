@@ -91,7 +91,7 @@ def main():
     configfile = sys.argv[1]
     config = Config(configfile)
     init, pid = start_postgresql(config)
-    if not init:
+    if init:
         register_node(config)
     init_signal(pid)
     process = psutil.Process(pid)
