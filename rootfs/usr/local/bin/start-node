@@ -15,7 +15,12 @@ from patroni.async_executor import CriticalTask
 
 
 logger = logging.getLogger(__name__)
-add_node_sql_tpl = "SELECT add_data_node('%s', '%s', '%s', '%s', TRUE, TRUE, '%s');"
+add_data_node_sql_tpl = """
+SELECT add_data_node('%s', host => '%s', database => '%s', port => '%s', if_not_exists => TRUE, bootstrap => TRUE, password => '%s');
+"""
+alter_data_node_sql_tpl = """
+SELECT alter_data_node('%s', host => '%s', database => '%s', port => '%s', available => TRUE);
+"""
 create_user_mapping_tpl = """
 CREATE USER MAPPING IF NOT EXISTS FOR %s SERVER "%s" OPTIONS (user '%s', password '%s');
 """
@@ -54,26 +59,41 @@ def start_postgresql(config):
         return True, patroni.postgresql.is_running().pid
 
 
-def register_node(config):
-    def exec_sql(conninfo, sql):
-        with closing(psycopg.connect(conninfo)) as conn:
-            conn.autocommit = True
-            conn.execute(sql)
-    print("Registering timescaledb node")
-    name = os.environ.get("HOSTNAME")
+def run_sql_in_main_node(dbname, sql):
     host = os.environ.get("DRYCC_TIMESERIES_SERVICE_HOST")
     port = os.environ.get("DRYCC_TIMESERIES_SERVICE_PORT")
     user = os.environ.get("DRYCC_TIMESERIES_USER")
     password = os.environ.get("DRYCC_TIMESERIES_PASSWORD")
+    conninfo = f"postgres://{user}:{password}@{host}:{port}/{dbname}"
+    with closing(psycopg.connect(conninfo)) as conn:
+        conn.autocommit = True
+        conn.execute(sql)
+
+
+def add_data_node(config):
+    print("Add timescaledb data node")
+    name = os.environ.get("HOSTNAME")
+    user = os.environ.get("DRYCC_TIMESERIES_USER")
+    password = os.environ.get("DRYCC_TIMESERIES_PASSWORD")
     node, node_port = config["postgresql"]["connect_address"].split(":")
     for dbname in os.environ.get('DRYCC_TIMESERIES_INIT_NAMES').split(','):
-        add_node_sql = add_node_sql_tpl % (name, node, dbname, node_port, password)
+        add_data_node_sql = add_data_node_sql_tpl % (name, node, dbname, node_port, password)
         create_user_mapping_sql = create_user_mapping_tpl % (user, name, user, password)
-        conninfo = f"postgres://{user}:{password}@{host}:{port}/{dbname}"
-        exec_sql(conninfo, add_node_sql)
-        exec_sql(conninfo, create_user_mapping_sql)
+        run_sql_in_main_node(dbname, add_data_node_sql)
+        run_sql_in_main_node(dbname, create_user_mapping_sql)
         print(f"Complete the registration of database {dbname}")
-    print("Registration timescaledb node completed")
+    print("Add timescaledb data node completed")
+
+
+def alter_data_node(config):
+    print("Alter timescaledb data node")
+    name = os.environ.get("HOSTNAME")
+    node, node_port = config["postgresql"]["connect_address"].split(":")
+    for dbname in os.environ.get('DRYCC_TIMESERIES_INIT_NAMES').split(','):
+        alter_data_node_sql = alter_data_node_sql_tpl % (name, node, dbname, node_port)
+        run_sql_in_main_node(dbname, alter_data_node_sql)
+        print(f"Complete the registration of database {dbname}")
+    print("Alter timescaledb data node completed")
 
 
 def init_signal(pid):
@@ -92,7 +112,9 @@ def main():
     config = Config(configfile)
     init, pid = start_postgresql(config)
     if init:
-        register_node(config)
+        add_data_node(config)
+    else:
+        alter_data_node(config)
     init_signal(pid)
     process = psutil.Process(pid)
     process.wait()
