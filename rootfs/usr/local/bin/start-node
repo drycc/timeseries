@@ -24,6 +24,9 @@ SELECT alter_data_node('%s', host => '%s', database => '%s', port => '%s', avail
 create_user_mapping_tpl = """
 CREATE USER MAPPING IF NOT EXISTS FOR %s SERVER "%s" OPTIONS (user '%s', password '%s');
 """
+select_data_node_sql_tpl = """
+select 1 from timescaledb_information.data_nodes where node_name='%s';
+"""
 
 
 # Looks like we are in a container, so we will act like init
@@ -67,7 +70,7 @@ def run_sql_in_main_node(dbname, sql):
     conninfo = f"postgres://{user}:{password}@{host}:{port}/{dbname}"
     with closing(psycopg.connect(conninfo)) as conn:
         conn.autocommit = True
-        conn.execute(sql)
+        return conn.execute(sql)
 
 
 def add_data_node(config):
@@ -77,10 +80,14 @@ def add_data_node(config):
     password = os.environ.get("DRYCC_TIMESERIES_PASSWORD")
     node, node_port = config["postgresql"]["connect_address"].split(":")
     for dbname in os.environ.get('DRYCC_TIMESERIES_INIT_NAMES').split(','):
-        add_data_node_sql = add_data_node_sql_tpl % (name, node, dbname, node_port, password)
-        create_user_mapping_sql = create_user_mapping_tpl % (user, name, user, password)
-        run_sql_in_main_node(dbname, add_data_node_sql)
-        run_sql_in_main_node(dbname, create_user_mapping_sql)
+        if data_node_exists(dbname, name):
+            alter_data_node_sql = alter_data_node_sql_tpl % (name, node, dbname, node_port)
+            run_sql_in_main_node(dbname, alter_data_node_sql)
+        else:
+            add_data_node_sql = add_data_node_sql_tpl % (name, node, dbname, node_port, password)
+            create_user_mapping_sql = create_user_mapping_tpl % (user, name, user, password)
+            run_sql_in_main_node(dbname, add_data_node_sql)
+            run_sql_in_main_node(dbname, create_user_mapping_sql)
         print(f"Complete the registration of database {dbname}")
     print("Add timescaledb data node completed")
 
@@ -94,6 +101,11 @@ def alter_data_node(config):
         run_sql_in_main_node(dbname, alter_data_node_sql)
         print(f"Complete the registration of database {dbname}")
     print("Alter timescaledb data node completed")
+
+
+def data_node_exists(dbname, node_name):
+    sql = select_data_node_sql_tpl % node_name
+    return run_sql_in_main_node(dbname, sql).rowcount > 0
 
 
 def init_signal(pid):
