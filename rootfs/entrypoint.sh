@@ -12,11 +12,34 @@ function init_config() {
   cat > /data/patroni.yaml <<__EOF__
 bootstrap:
   dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    failsafe_mode: true
     postgresql:
       use_pg_rewind: true
       parameters:
         max_connections: ${PG_MAX_CONNECTIONS}
         max_prepared_transactions: ${PG_MAX_CONNECTIONS}
+        hot_standby: "on"
+        max_worker_processes: 8
+        max_wal_senders: 10
+        max_replication_slots: 10
+        hot_standby_feedback: on
+        max_locks_per_transaction: 64
+        wal_log_hints: "on"
+        track_commit_timestamp: "off"
+        archive_mode: "on"
+        archive_timeout: 300s
+        archive_command: "/bin/true"
+        log_destination: 'csvlog'
+        log_filename: postgresql.log
+        logging_collector: on
+        log_min_messages: 'info'
+        log_min_duration_statement: 1000
+        log_lock_waits: on
+        log_statement: 'ddl' 
   initdb:
   - auth-host: md5
   - auth-local: trust
