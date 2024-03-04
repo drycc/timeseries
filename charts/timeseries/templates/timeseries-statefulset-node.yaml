@@ -40,10 +40,16 @@ spec:
         ports:
         - containerPort: 5432
           protocol: TCP
+        {{- if .Values.diagnosticMode.enabled }}
+        command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 10 }}
+        args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
+        {{- else }}
         args:
         - node
+        {{- end }}
         {{- include "timeseries.limits" . | indent 8 }}
         {{- include "timeseries.envs" . | indent 8 }}
+        {{- if not .Values.diagnosticMode.enabled }}
         livenessProbe:
           exec:
             command:
@@ -62,6 +68,7 @@ spec:
           initialDelaySeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        {{- end }}
         volumeMounts:
         - name: timeseries-node-data
           mountPath: /data
